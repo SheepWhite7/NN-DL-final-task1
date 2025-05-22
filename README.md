@@ -174,8 +174,5 @@ python run_nerf.py --config configs/frames.txt --render_only
 
 ---
 
-欢迎PR或提Issue交流！
 
----
-
-（如需更详细参数解释，请查阅对应项目[Plenoxel文档](https://github.com/sxyu/svox2), [NeRF文档](https://github.com/bmild/nerf), [LLFF工具文档](https://github.com/Fyusion/LLFF), [COLMAP官方文档](https://colmap.github.io/)。）
+（对应参考项目[Plenoxel](https://github.com/sxyu/svox2), [NeRF](https://github.com/bmild/nerf), [LLFF](https://github.com/Fyusion/LLFF), [COLMAP](https://colmap.github.io/)。）
