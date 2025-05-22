@@ -85,9 +85,9 @@ sqlite3 database.db "SELECT COUNT(*) FROM matches;"
 ```bash
 # 在 opt 目录下执行（路径需根据实际调整）
 bash ./launch.sh <实验名称> <GPU 编号> <数据目录> -c <配置文件>
+```
 
-
-「配置文件说明」：  
+**配置文件说明**：  
 - `configs/syn.json`：适用于 NeRF-synthetic 合成数据  
 - `configs/llff.json`：适用于前向视角真实数据  
 - `configs/tnt.json`：适用于 Tanks and Temples 数据集  
@@ -95,11 +95,11 @@ bash ./launch.sh <实验名称> <GPU 编号> <数据目录> -c <配置文件>
 
 
 ### （二）监控训练进度
-1. 「实时日志」：  
+1. **实时日志**：  
    ```bash
    tail -f ckpt/<实验名称>/log
    ```
-2. 「TensorBoard 可视化」：  
+2. **TensorBoard 可视化**：  
    ```bash
    cd opt/ckpt/<实验名称>
    tensorboard --logdir="." --load_fast=false --host=127.0.0.1 --port=8008
