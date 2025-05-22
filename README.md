@@ -1,138 +1,181 @@
+# 使用自己的数据进行3D重建与神经场渲染流程 (Plenoxel & NeRF)
 
-# 使用自己拍摄的视频进行 Plenoxel 3D 重建
+本项目包含利用[Plenoxel (svox2)](https://github.com/sxyu/svox2) 和[NeRF](https://github.com/bmild/nerf)进行3D重建与渲染的完整流程。  
+推荐运行环境：Ubuntu 18.04/20.04，Python 3.8+，CUDA 11.x（可选GPU），并保证已安装Anaconda。
 
-## 一、环境搭建
+## 目录
 
-### （一）克隆 Plenoxel 代码并配置环境
-```bash
-# 克隆代码仓库
+- [1. 安装与环境配置](#1-安装与环境配置)
+    - [1.1 安装 plenoxel（svox2）](#11-安装-plenoxel)
+    - [1.2 安装 NeRF 及 LLFF 工具](#12-安装-nerf-及-llff-工具)
+    - [1.3 安装 COLMAP](#13-安装-colmap)
+- [2. 数据准备](#2-数据准备)
+    - [2.1 拍摄视频 & 抽帧](#21-拍摄视频--抽帧)
+    - [2.2 COLMAP 预处理和格式转换](#22-colmap-预处理和格式转换)
+- [3. Plenoxel 训练与推理](#3-plenoxel-训练与推理)
+- [4. NeRF 训练与推理](#4-nerf-训练与推理)
+
+---
+
+## 1. 安装与环境配置
+
+### 1.1 安装 plenoxel (svox2)
+
+```sh
 git clone https://github.com/sxyu/svox2.git
 cd svox2
 
-# 创建并激活 Conda 环境
 conda env create -f environment.yml
 conda activate plenoxel
 
-# 安装库（含 CUDA 扩展）
 pip install -e . --verbose
 ```
 
-**注意**：若 CUDA 工具包版本 < 11，需先安装 CUB：  
-```bash
-conda install -c bottler nvidiacub
+### 1.2 安装 NeRF 及 LLFF 工具
+
+```sh
+git clone https://github.com/Fyusion/LLFF.git
+
+pip install scikit-image imageio
 ```
 
+### 1.3 安装 COLMAP
 
-### （二）安装 COLMAP（用于相机位姿估计）
-```bash
-# 安装依赖项
-sudo apt-get install -y \
+```sh
+sudo apt-get install \
     git cmake ninja-build build-essential \
     libboost-program-options-dev libboost-graph-dev libboost-system-dev \
     libeigen3-dev libflann-dev libfreeimage-dev libmetis-dev \
     libgoogle-glog-dev libgtest-dev libgmock-dev libsqlite3-dev \
     libglew-dev qtbase5-dev libqt5opengl5-dev libcgal-dev libceres-dev
 
-# 安装 CUDA 工具包（若需 GPU 加速）
-sudo apt-get install -y nvidia-cuda-toolkit nvidia-cuda-toolkit-gcc
+sudo apt-get install -y nvidia-cuda-toolkit nvidia-cuda-toolkit-gcc  # 可选, 若有Nvidia GPU
 
-# 克隆并编译 COLMAP
 git clone https://github.com/colmap/colmap.git
 cd colmap
 mkdir build && cd build
-cmake .. -GNinja  # 若需指定 CUDA 路径，取消注释下方三行
-# cmake .. -GNinja \
-# -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
-# -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda \-DCMAKE_CUDA_ARCHITECTURES=89
+cmake .. -GNinja
+# 若需指定CUDA版本，使用如下命令（按需更改路径）：
+# cmake .. -GNinja -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda -DCMAKE_CUDA_ARCHITECTURES=89
 ninja
 sudo ninja install
+```
 
-# 配置无 GUI 环境（服务器场景）
+**注意：**  
+如果在无GUI服务器环境运行，需设置环境变量：
+
+```sh
 export QT_QPA_PLATFORM=offscreen
 ```
 
+---
 
-## 二、数据准备
+## 2. 数据准备
 
-### （一）拍摄与抽帧
-1. **拍摄要求**：  
-   - 围绕物体拍摄 **360 度环绕视频**，包含不同仰角视角。  
-   - 确保物体静止、光照稳定，避免动态元素、高光反射和运动模糊。  
-2. **视频抽帧**：  
-   ```bash
-   mkdir frames
-   ffmpeg -i video.mp4 -vf fps=2 frames/frame_%03d.jpg  # 每秒抽取 2 帧（可调整 fps 值）
-   ```
+### 2.1 拍摄视频 & 抽帧
 
+- 使用手机或相机对建模物体环绕360°拍摄视频。
+- 用`ffmpeg`抽取图片帧，例如每秒抽2帧：
 
-### （二）格式转换与检查
-```bash
-# 进入 Plenoxel 脚本目录
-cd opt/scripts
-
-# 使用 COLMAP 处理图像（禁用径向畸变校正）
-bash proc_colmap.sh /path/to/frames --noradial
-
-# 检查匹配结果（确保输出不为 0）
-cd /path/to/frames
-sqlite3 database.db "SELECT COUNT(*) FROM matches;"
+```sh
+mkdir frames1
+ffmpeg -i /root/syyang/nn_dl/svox2/video.mp4 -vf fps=2 frames1/frame_%03d.jpg
 ```
 
+### 2.2 COLMAP 预处理和格式转换
 
-## 三、模型训练
+1. 调用处理脚本进行COLMAP SfM处理：
 
-### （一）启动训练
-```bash
-# 在 opt 目录下执行（路径需根据实际调整）
-bash ./launch.sh <实验名称> <GPU 编号> <数据目录> -c <配置文件>
+    ```sh
+    cd /root/syyang/nn_dl/svox2/opt/scripts
+    bash proc_colmap.sh /root/syyang/nn_dl/svox2/frames1 --noradial
+    ```
+
+2. 检查图像配对情况，输出不能为0：
+
+    ```sh
+    cd /root/syyang/nn_dl/svox2/frames1
+    sqlite3 database.db "SELECT COUNT(*) FROM matches;"
+    ```
+
+---
+
+## 3. Plenoxel 训练与推理
+
+### 3.1 训练
+
+建议先检查并修改`configs/custom.json`内的参数。
+
+```sh
+bash ./launch.sh test2 0 /root/syyang/nn_dl/svox2/frames1 -c configs/custom.json
 ```
 
-**配置文件说明**：  
-- `configs/syn.json`：适用于 NeRF-synthetic 合成数据  
-- `configs/llff.json`：适用于前向视角真实数据  
-- `configs/tnt.json`：适用于 Tanks and Temples 数据集  
-- `configs/custom.json`：适用于自定义 360 度数据  
+### 3.2 训练进度监控
 
+实时查看日志：
 
-### （二）监控训练进度
-1. **实时日志**：  
-   ```bash
-   tail -f ckpt/<实验名称>/log
-   ```
-2. **TensorBoard 可视化**：  
-   ```bash
-   cd opt/ckpt/<实验名称>
-   tensorboard --logdir="." --load_fast=false --host=127.0.0.1 --port=8008
-   ```
-   访问 `http://localhost:8008` 查看训练曲线。
-
-
-## 四、测试与渲染
-
-### （一）测试推理
-```bash
-# 在 opt 目录下执行
-python render_imgs.py <检查点路径> <数据目录> --no_imsave
-
-# 示例
-python render_imgs.py ckpt/test1/ckpt.npz /root/syyang/nn_dl/svox2/frames --no_imsave
-```
-**参数说明**：`--no_imsave` 用于跳过图像保存，加速测试。
-
-
-### （二）渲染 360 度视角视频
-```bash
-python render_imgs_circle.py <检查点路径> <数据目录>
-
-# 示例
-python render_imgs_circle.py ckpt/test1/ckpt.npz /root/syyang/nn_dl/svox2/frames
+```sh
+tail -f ckpt/test2/log
 ```
 
+### 3.3 启动 Tensorboard
 
-## 五、注意事项
-1. **动态物体**：不支持动态场景，拍摄时需确保物体静止。  
-2. **光照与曝光**：保持光照稳定，锁定相机曝光参数。  
-3. **图像质量**：避免高压缩率 JPEG 图像，建议使用 PNG 格式。  
-4. **CUDA 版本**：推荐使用 CUDA 11+，旧版本需手动安装 CUB。  
-5. **配置调整**：若重建效果不佳，可尝试切换 `custom.json` 与 `custom_alt.json`，或调整 TV 损失和稀疏性参数。
+```sh
+cd /root/syyang/nn_dl/svox2/opt/ckpt/test2
+tensorboard --logdir="." --load_fast=false --host=127.0.0.1 --port=8008
+```
 
+### 3.4 测试模型渲染
+
+```sh
+python render_imgs.py /root/syyang/nn_dl/svox2/opt/ckpt/test2/ckpt.npz /root/syyang/nn_dl/svox2/frames1 --no_imsave
+```
+
+### 3.5 渲染动画/环拍
+
+```sh
+python render_imgs_circle.py /root/syyang/nn_dl/svox2/opt/ckpt/test2/ckpt.npz /root/syyang/nn_dl/svox2/frames1
+```
+
+---
+
+## 4. NeRF 训练与推理
+
+### 4.1 生成 LLFF 所需的 `poses_bounds.npy`
+
+```sh
+python /root/syyang/nn_dl/LLFF/imgs2poses.py /root/syyang/nn_dl/nerf-pytorch/data/frames1
+```
+
+### 4.2 配置 NeRF
+
+- 修改 `run_nerf.py` 里的数据路径指向你的数据。
+- 新建配置文件 `configs/frames.txt`，内容参考 `configs/fern.txt` 等文件。
+
+### 4.3 训练
+
+```sh
+python run_nerf.py --config configs/frames.txt
+```
+
+### 4.4 渲染/测试
+
+```sh
+python run_nerf.py --config configs/frames.txt --render_only
+```
+
+---
+
+## 备注与常见问题
+
+- 充分利用GPU加速。
+- 服务器没有GUI时，务必设置`export QT_QPA_PLATFORM=offscreen`，防止COLMAP报错。
+- 路径请根据自己的实际情况适配。
+
+---
+
+欢迎PR或提Issue交流！
+
+---
+
+（如需更详细参数解释，请查阅对应项目[Plenoxel文档](https://github.com/sxyu/svox2), [NeRF文档](https://github.com/bmild/nerf), [LLFF工具文档](https://github.com/Fyusion/LLFF), [COLMAP官方文档](https://colmap.github.io/)。）
