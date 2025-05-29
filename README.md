@@ -1,8 +1,5 @@
 # 使用自己的数据进行3D重建与神经场渲染流程 (Plenoxel & NeRF)
 
-本项目包含利用[Plenoxel (svox2)](https://github.com/sxyu/svox2) 和[NeRF](https://github.com/bmild/nerf)进行3D重建与渲染的完整流程。  
-推荐运行环境：Ubuntu 18.04/20.04，Python 3.8+，CUDA 11.x（可选GPU），并保证已安装Anaconda。
-
 ## 目录
 
 - [1. 安装与环境配置](#1-安装与环境配置)
